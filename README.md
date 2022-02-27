@@ -11,7 +11,7 @@ Operator Framework 是 CoreOS 开源的一个用于快速开发 Operator 的工�
 
 Operator SDK: 无需了解复杂的 Kubernetes API 特性，即可让你根据你自己的专业知识构建一个 Operator 应用。
 Operator Lifecycle Manager（OLM）: 帮助你安装、更新和管理跨集群的运行中的所有 Operator（以及他们的相关服务）
-https://bxdc-static.oss-cn-beijing.aliyuncs.com/images/operator-sdk-lifecycle.png
+![avatar](https://bxdc-static.oss-cn-beijing.aliyuncs.com/images/operator-sdk-lifecycle.png)
 
 Operator SDK 提供了用于开发 Go、Ansible 以及 Helm 中的 Operator 的工作流，下面的工作流适用于 Golang 的 Operator：
 
@@ -27,7 +27,7 @@ Operator SDK 提供了用于开发 Go、Ansible 以及 Helm 中的 Operator 的�
 
 每种 Operator 类型都有不同的功能集，在选择项目的类型时，重要的是要了解每种项目类型的功能和局限性以及 Operator 的用例。
 
-https://bxdc-static.oss-cn-beijing.aliyuncs.com/images/20201016150157.png
+![avatar](https://bxdc-static.oss-cn-beijing.aliyuncs.com/images/20201016150157.png)
 
 ## 示例
 
@@ -41,7 +41,7 @@ kind: AppService
 metadata:
   name: nginx-app
 spec:
-  size: 2
+  replicas: 2
   image: nginx:1.7.9
   ports:
    - port: 80
@@ -150,7 +150,7 @@ $ go mod tidy
 
 这里我们添加了一个 group 为 app，版本为 v1beta1 的 AppService 的资源对象，添加完成后，我们可以看到类似于下面的这样项目结构，我们可以看到生成了对应的 api 和 controllers 包：
 
-https://bxdc-static.oss-cn-beijing.aliyuncs.com/images/20201016161654.png
+![avatar](https://bxdc-static.oss-cn-beijing.aliyuncs.com/images/20201016161654.png)
 
 ### 自定义 API
 
@@ -177,7 +177,7 @@ import (
 )
 ```
 
-这里的 resources、envs、ports 的定义都是直接引用的 "k8s.io/api/core/v1" 中定义的结构体，而且需要注意的是我们这里使用的是 ServicePort，而不是像传统的 Pod 中定义的 ContanerPort，这是因为我们的资源清单中不仅要描述容器的 Port，还要描述 Service 的 Port。
+这里的 resources、envs、ports 的定义都是直接引用的 `"k8s.io/api/core/v1"`中定义的结构体，而且需要注意的是我们这里使用的是 ServicePort，而不是像传统的 Pod 中定义的 ContanerPort，这是因为我们的资源清单中不仅要描述容器的 Port，还要描述 Service 的 Port。
 
 然后一个比较重要的结构体 AppServiceStatus 用来描述资源的状态，当然我们可以根据需要去自定义状态的描述，我这里就偷懒直接使用 Deployment 的状态了：
 
@@ -348,9 +348,6 @@ spec:
      nodePort: 30002
 ```
 
-
-
-
 直接创建这个资源对象：
 
 ```shell
@@ -384,11 +381,9 @@ NAME             TYPE           CLUSTER-IP       EXTERNAL-IP             PORT(S)
 nginx            NodePort       10.111.179.0     <none>                  80:30002/TCP     2m23s
 ```
 
+看到了吧，我们定义了两个副本（replicas=2），这里就出现了两个 Pod，还有一个 NodePort=30002 的 Service 对象，我们可以通过该端口去访问下应用：
 
-
-看到了吧，我们定义了两个副本（size=2），这里就出现了两个 Pod，还有一个 NodePort=30002 的 Service 对象，我们可以通过该端口去访问下应用：
-
-https://bxdc-static.oss-cn-beijing.aliyuncs.com/images/operator-demo-op-demo.png
+![avatar](https://bxdc-static.oss-cn-beijing.aliyuncs.com/images/operator-demo-op-demo.png)
 
 如果应用在安装过程中出现了任何问题，我们都可以通过本地的 Operator 调试窗口找到有用的信息，然后调试修改即可。
 
