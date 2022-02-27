@@ -510,3 +510,7 @@ myapps.app.ydzs.io   2020-11-06T07:06:54Z
 ```
 
 到这里我们的 CRD 和 Operator 实现都已经安装成功了。
+
+**参考链接**
+- https://www.sfernetes.com/2021/11/22/operator-framework/#%E9%A1%B9%E7%9B%AE%E7%BB%93%E6%9E%84
+- https://www.cnblogs.com/leffss/p/14732645.html
