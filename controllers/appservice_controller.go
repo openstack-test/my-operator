@@ -18,14 +18,16 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	appv1 "my-operator/api/v1"
 	"my-operator/resources"
+	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -48,7 +50,6 @@ func (r *AppServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	var appService appv1.AppService
 	err := r.Get(ctx, req.NamespacedName, &appService)
 	if err != nil {
-		// MyApp 被删除的时候，忽略
 		if client.IgnoreNotFound(err) != nil {
 			return ctrl.Result{}, err
 		}
@@ -60,31 +61,74 @@ func (r *AppServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	log.Info("fetch appservice objects", "appservice", appService)
 
-	// CreateOrUpdate Deployment
-	var deploy appsv1.Deployment
-	deploy.Name = appService.Name
-	deploy.Namespace = appService.Namespace
-	or, err := ctrl.CreateOrUpdate(ctx, r, &deploy, func() error {
-		resources.MutateDeployment(&appService, &deploy)
-		return controllerutil.SetControllerReference(&appService, &deploy, r.Scheme)
-	})
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	log.Info("CreateOrUpdate", "Deployment", or)
+	// 如果不存在，则创建关联资源; 如果存在，判断是否需要更新
+	// 如果需要更新，则直接更新; 如果不需要更新，则正常返回
+	deploy := &appsv1.Deployment{}
+	if err := r.Get(ctx, req.NamespacedName, deploy); err != nil && errors.IsNotFound(err) {
+		// 1) 关联Annotations
+		data, _ := json.Marshal(appService.Spec)
+		if appService.Annotations != nil {
+			appService.Annotations[oldSpecAnnotation] = string(data)
+		} else {
+			appService.Annotations = map[string]string{oldSpecAnnotation: string(data)}
+		}
 
-	// CreateOrUpdate Service
-	var service corev1.Service
-	service.Name = appService.Name
-	service.Namespace = appService.Namespace
-	or, err = ctrl.CreateOrUpdate(ctx, r, &service, func() error {
-		resources.MutateService(&appService, &service)
-		return controllerutil.SetControllerReference(&appService, &service, r.Scheme)
-	})
-	if err != nil {
+		// 2) 更新appService
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			return r.Client.Update(ctx, &appService)
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		// 3) 创建关联资源
+		// 创建Deployment
+		deploy := resources.NewDeploy(&appService)
+		if err := r.Client.Create(ctx, deploy); err != nil {
+			return ctrl.Result{}, err
+		}
+		// 创建Service
+		service := resources.NewService(&appService)
+		if err := r.Client.Create(ctx, service); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+	oldSpec := appv1.AppServiceSpec{}
+	if err := json.Unmarshal([]byte(appService.Annotations[oldSpecAnnotation]), &oldSpec); err != nil {
 		return ctrl.Result{}, err
 	}
-	log.Info("CreateOrUpdate", "Service", or)
+
+	// 当新对象与旧对象不一致，则需要更新
+	if !reflect.DeepEqual(appService.Spec, oldSpec) {
+		// 更新关联资源
+		newDeploy := resources.NewDeploy(&appService)
+		oldDeploy := &appsv1.Deployment{}
+		if err := r.Get(ctx, req.NamespacedName, oldDeploy); err != nil {
+			return ctrl.Result{}, err
+		}
+		oldDeploy.Spec = newDeploy.Spec
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			return r.Client.Update(ctx, oldDeploy)
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		newService := resources.NewService(&appService)
+		oldService := &corev1.Service{}
+		if err := r.Get(ctx, req.NamespacedName, oldService); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		// 需要指定 ClusterIP 为之前的，不然更新会报错
+		newService.Spec.ClusterIP = oldService.Spec.ClusterIP
+		oldService.Spec = newService.Spec
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			return r.Client.Update(ctx, oldService)
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
 }
 
