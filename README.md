@@ -2,7 +2,7 @@
 
 ## Operator 介绍
 
-Operator 可以看成是 CRD + Controller 的一种组合特例，Operator 是一种思想，它结合了特定领域知识并通过 CRD 机制扩展了 Kubernetes API 资源，使用户管理 Kubernetes 的内置资源（Pod、Deployment等）一样创建、配置和管理应用程序，Operator 是一个特定的应用程序的控制器，通过扩展 Kubernetes API 资源以代表 Kubernetes 用户创建、配置和管理复杂应用程序的实例，通常包含资源模型定义和控制器，通过 Operator 通常是为了实现某种特定软件（通常是有状态服务）的自动化运维。
+Operator 可以看成是 CRD + Controller 的一种组合资源，Operator 是一种思想，它结合了特定领域知识并通过 CRD 机制扩展了 Kubernetes API 资源，使用户管理 Kubernetes 的内置资源（Pod、Deployment等）一样创建、配置和管理应用程序，Operator 是一个特定的应用程序的控制器，通过扩展 Kubernetes API 资源以代表 Kubernetes 用户创建、配置和管理复杂应用程序的实例，通常包含资源模型定义和控制器，通过 Operator 通常是为了实现某种特定软件（通常是有状态服务）的自动化运维。
 
 我们完全可以通过上面的方式编写一个 CRD 对象，然后去手动实现一个对应的 Controller 就可以实现一个 Operator，但是我们也发现从头开始去构建一个 CRD 控制器并不容易，需要对 Kubernetes 的 API 有深入了解，并且 RBAC 集成、镜像构建、持续集成和部署等都需要很大工作量。为了解决这个问题，社区就推出了对应的简单易用的 Operator 框架，比较主流的是 kubebuilder 和 Operator Framework，这两个框架的使用基本上差别不大，我们可以根据自己习惯选择一个即可，我们这里先使用 Operator Framework 来给大家简要说明下 Operator 的开发。
 
@@ -67,7 +67,6 @@ spec:
 
 ```shell
 wget -c https://github.com/operator-framework/operator-sdk/releases/download/v1.17.0/operator-sdk_linux_amd64
-
 mv operator-sdk_linux_amd64 /usr/bin/operator-sdk
 chmod +x /usr/bin/operator-sdk
 ```
@@ -85,13 +84,13 @@ yum -y install gcc
 按照上面我们预先定义的 CRD 资源清单，我们这里可以这样创建：
 
 ```shell
-# 在GOPATH目录下操作(非必须)
+# 创建项目目录
 mkdir -p my-operator && cd my-operator
 # 使用gomodules包管理工具
 export GO111MODULE=on  
 # 使用代理加速
 export GOPROXY="https://goproxy.cn" 
-# 使用 sdk 创建一个名为 opdemo 的 operator 项目，如果在GOPATH之外需要指定 repo 参数
+# 使用 sdk 创建一个名为 my-operator 的 operator 项目
 go mod init my-operator
 
 # 使用下面的命令初始化项目
@@ -148,18 +147,16 @@ $ operator-sdk create api --resource=true --controller=true --group app --versio
 $ go mod tidy
 ```
 
-这里我们添加了一个 group 为 app，版本为 v1beta1 的 AppService 的资源对象，添加完成后，我们可以看到类似于下面的这样项目结构，我们可以看到生成了对应的 api 和 controllers 包：
-
-![avatar](https://bxdc-static.oss-cn-beijing.aliyuncs.com/images/20201016161654.png)
+这里我们添加了一个 group 为 app，版本为 v1的 AppService 的资源对象。
 
 ### 自定义 API
 
-打开源文件` api/v1beta1/appservice_types.go`，需要我们根据我们的需求去自定义结构体 AppServiceSpec，我们最上面预定义的资源清单中就有 size、image、ports 这些属性，所有我们需要用到的属性都需要在这个结构体中进行定义：
+打开源文件` api/v1beta1/appservice_types.go`，需要我们根据我们的需求去自定义结构体 AppServiceSpec，我们最上面预定义的资源清单中就有 replicas、image、ports 这些属性，所有我们需要用到的属性都需要在这个结构体中进行定义：
 
 
 ```go
 type AppServiceSpec struct {
-	Size      *int32                        `json:"size"`
+	Replicas  *int32                        `json:"replicas"`
 	Image     string                        `json:"image"`
 	Resources corev1.ResourceRequirements   `json:"resources,omitempty"`
 	Envs      []corev1.EnvVar               `json:"envs,omitempty"`
@@ -223,56 +220,100 @@ Reconcile 实际上是对单个对象进行调谐，我们的 Request 只是有�
 
 大多数控制器需要一个日志句柄和一个上下文，所以我们在 Reconcile 中将他们初始化。上下文是用来允许取消请求的，它是所有 client 方法的第一个参数。
 
-Reconcile 业务逻辑代码如下。
+Reconcile协调业务逻辑代码如下。
 
 ```go
-func (r *AppServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-ctx := context.Background()
-	log := r.Log.WithValues("appservice", req.NamespacedName)
+func (r *AppServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+   ctx = context.Background()
+   log := r.Log.WithValues("appservice", req.NamespacedName)
 
-	// 业务逻辑实现
-	// 获取 AppService 实例
-	var appService appv1beta1.AppService
-	err := r.Get(ctx, req.NamespacedName, &appService)
-	if err != nil {
-		// MyApp 被删除的时候，忽略
-		if client.IgnoreNotFound(err) != nil {
-			return ctrl.Result{}, err
+	// 获取appService crd资源
+	appService := &appv1.AppService{}
+	if err := r.Client.Get(ctx, req.NamespacedName, appService); err != nil {
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	}
 
+	// crd 资源标记为删除
 	if appService.DeletionTimestamp != nil {
 		return ctrl.Result{}, nil
 	}
 	log.Info("fetch appservice objects", "appservice", appService)
 
-	// CreateOrUpdate Deployment
-	var deploy appsv1.Deployment
-	deploy.Name = appService.Name
-	deploy.Namespace = appService.Namespace
-	or, err := ctrl.CreateOrUpdate(ctx, r, &deploy, func() error {
-		MutateDeployment(&appService, &deploy)
-		return controllerutil.SetControllerReference(&appService, &deploy, r.Scheme)
-	})
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	log.Info("CreateOrUpdate", "Deployment", or)
+	// 如果不存在，则创建关联资源; 如果存在，判断是否需要更新
+	// 如果需要更新，则直接更新; 如果不需要更新，则正常返回
+	oldDeploy := &appsv1.Deployment{}
+	if err := r.Client.Get(ctx, req.NamespacedName, oldDeploy); err != nil {
+		// deployment 不存在，创建
+		if errors.IsNotFound(err) {
+			// 创建deployment
+			if err := r.Client.Create(ctx, resources.NewDeploy(appService)); err != nil {
+				return ctrl.Result{}, err
+			}
 
-	// CreateOrUpdate Service
-	var service v1.Service
-	service.Name = appService.Name
-	service.Namespace = appService.Namespace
-	or, err = ctrl.CreateOrUpdate(ctx, r, &service, func() error {
-		MutateService(&appService, &service)
-		return controllerutil.SetControllerReference(&appService, &service, r.Scheme)
-	})
-	if err != nil {
-		return ctrl.Result{}, err
+			// 创建service
+			if err := r.Client.Create(ctx, resources.NewService(appService)); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			// 更新 crd 资源的 Annotations
+			data, _ := json.Marshal(appService.Spec)
+			if appService.Annotations != nil {
+				appService.Annotations["spec"] = string(data)
+			} else {
+				appService.Annotations = map[string]string{"spec": string(data)}
+			}
+			if err := r.Client.Update(ctx, appService); err != nil {
+				return ctrl.Result{}, err
+			}
+		} else {
+			return ctrl.Result{}, err
+		}
+	} else {
+		// deployment 存在，更新
+		oldSpec := appv1.AppServiceSpec{}
+		if err := json.Unmarshal([]byte(appService.Annotations["spec"]), &oldSpec); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if !reflect.DeepEqual(appService.Spec, oldSpec) {
+			// 更新deployment
+			newDeploy := resources.NewDeploy(appService)
+			oldDeploy.Spec = newDeploy.Spec
+			if err := r.Client.Update(ctx, oldDeploy); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			// 更新service
+			newService := resources.NewService(appService)
+			oldService := &corev1.Service{}
+			if err := r.Client.Get(ctx, req.NamespacedName, oldService); err != nil {
+				return ctrl.Result{}, err
+			}
+			// 更新 service 必须设置老的 clusterIP
+			clusterIP := oldService.Spec.ClusterIP
+			oldService.Spec = newService.Spec
+			oldService.Spec.ClusterIP = clusterIP
+			if err := r.Client.Update(ctx, oldService); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			// 更新 crd 资源的 Annotations
+			data, _ := json.Marshal(appService.Spec)
+			if appService.Annotations != nil {
+				appService.Annotations["spec"] = string(data)
+			} else {
+				appService.Annotations = map[string]string{"spec": string(data)}
+			}
+			if err := r.Client.Update(ctx, appService); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 	}
-	log.Info("CreateOrUpdate", "Service", or)
 	return ctrl.Result{}, nil
+}
 ```
 上面就是业务逻辑实现的核心代码，逻辑很简单，就是去判断资源是否存在，不存在，则直接创建新的资源，创建新的资源除了需要创建 Deployment 资源外，还需要创建 Service 资源对象，因为这就是我们的需求，当然你还可以自己去扩展，比如再创建一个 Ingress 对象。更新也是一样的，去对比新旧对象的声明是否一致，如果不一致则需要更新，同样的，两种资源都需要更新的。
 
@@ -282,7 +323,7 @@ ctx := context.Background()
 
 ```go
 var (
-	GroupVersion = schema.GroupVersion{Group: "app.ydzs.io", Version: "v1beta1"}
+	GroupVersion = schema.GroupVersion{Group: "app.example.com", Version: "v1"}
 	Kind         = "AppService"
     SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
     AddToScheme = SchemeBuilder.AddToScheme
@@ -290,19 +331,15 @@ var (
 ```
 
 NewDeploy 方法实现如下：
-
 ```
-
-```
-
-
-newService 对应的方法实现如下：
-
-```
-
+/resources/deployment.go
 ```
 
 
+NewService 对应的方法实现如下：
+```
+/resources/service.go
+```
 
 这样我们就实现了 AppService 这种资源对象的业务逻辑。
 
@@ -312,9 +349,6 @@ newService 对应的方法实现如下：
 
 ```shell
 $ kubectl cluster-info
-Kubernetes master is running at https://ydzs-master:6443
-KubeDNS is running at https://ydzs-master:6443/api/v1/namespaces/kube-system/services/kube-dns/proxy
-To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 ```
 
 首先，需要在集群中安装 CRD 对象：
@@ -340,7 +374,7 @@ kind: AppService
 metadata:
   name: nginx
 spec:
-  size: 2
+  replicas: 2
   image: nginx:1.7.9
   ports:
    - port: 80
@@ -352,18 +386,14 @@ spec:
 
 ```shell
 $ kubectl apply -f config/samples/app_v1beta1_appservice.yaml
-appservice.app.ydzs.io/nginx-app created
 ```
 
 我们可以看到我们的应用创建成功了，这个时候查看 Operator 的调试窗口会有如下的信息出现：
 
 ```shell
 ......
-{"level":"info","ts":1559207416.670523,"logger":"controller_appservice","msg":"Reconciling AppService","Request.Namespace":"default","Request.Name":"nginx-app"}
-{"level":"info","ts":1559207417.004226,"logger":"controller_appservice","msg":"Reconciling AppService","Request.Namespace":"default","Request.Name":"nginx-app"}
-{"level":"info","ts":1559207417.004331,"logger":"controller_appservice","msg":"Reconciling AppService","Request.Namespace":"default","Request.Name":"nginx-app"}
-{"level":"info","ts":1559207418.33779,"logger":"controller_appservice","msg":"Reconciling AppService","Request.Namespace":"default","Request.Name":"nginx-app"}
-{"level":"info","ts":1559207418.951193,"logger":"controller_appservice","msg":"Reconciling AppService","Request.Namespace":"default","Request.Name":"nginx-app"}
+1.646208501373661e+09	INFO	controllers.AppService	fetch appservice objects	{"appservice": "default/nginx", "appservice": {"apiVersion": "app.example.com/v1", "kind": "AppService", "namespace": "default", "name": "nginx"}}
+1.6462085017729385e+09	INFO	controllers.AppService	fetch appservice objects	{"appservice": "default/nginx", "appservice": {"apiVersion": "app.example.com/v1", "kind": "AppService", "namespace": "default", "name": "nginx"}}
 ......
 ```
 
@@ -381,9 +411,8 @@ NAME             TYPE           CLUSTER-IP       EXTERNAL-IP             PORT(S)
 nginx            NodePort       10.111.179.0     <none>                  80:30002/TCP     2m23s
 ```
 
-看到了吧，我们定义了两个副本（replicas=2），这里就出现了两个 Pod，还有一个 NodePort=30002 的 Service 对象，我们可以通过该端口去访问下应用：
+看到了吧，我们定义了两个副本（replicas=2），这里就出现了两个 Pod，还有一个 NodePort=30002 的 Service 对象.
 
-![avatar](https://bxdc-static.oss-cn-beijing.aliyuncs.com/images/operator-demo-op-demo.png)
 
 如果应用在安装过程中出现了任何问题，我们都可以通过本地的 Operator 调试窗口找到有用的信息，然后调试修改即可。
 
@@ -405,48 +434,48 @@ Dockerfile 需要更改为这样：
 
 ```dockerfile
 # Build the manager binary
-FROM golang:1.13 as builder
+FROM golang:1.17 as builder
 
 WORKDIR /workspace
+# Copy the Go Modules manifests
 COPY go.mod go.mod
 COPY go.sum go.sum
-RUN export GOPROXY=https://goproxy.cn && go mod download   # 增加代理
+# cache deps before building and copying source so that we don't need to re-download as much
+# and so that source changes don't invalidate our downloaded layer
+RUN export GOPROXY=https://goproxy.cn && go mod download
 
 # Copy the go source
 COPY main.go main.go
 COPY api/ api/
 COPY controllers/ controllers/
+COPY resources/ resources/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager main.go
 
-FROM golang:1.13  # 将distrolers镜像改掉，该镜像用于减小镜像大小的
+# Use distroless as minimal base image to package the manager binary
+# Refer to https://github.com/GoogleContainerTools/distroless for more details
+FROM golang:1.17
 WORKDIR /
 COPY --from=builder /workspace/manager .
+#USER 65532:65532
 
 ENTRYPOINT ["/manager"]
 ```
 
-
-
-执行命令
+执行命令构建
 
 ```shell
-$ export USERNAME=<dockerbub-username>
-$ make docker-build IMG=$USERNAME/opdemo:v1.0.0
-......
-Successfully built 29cd605c4ad2
-Successfully tagged cnych/opdemo:v1.0.0
-INFO[0041] Operator build complete. 
+$ make docker-build IMG=registry.cn-hangzhou.aliyuncs.com/k8s-prow1/my-operator:v1.0.0
 ```
 
-镜像构建成功后，推送到 docker hub：
+镜像构建成功后，推送到自己的registry
 
 ```shell
-$ make docker-push IMG=$USERNAME/opdemo:v1.0.0
+$ make docker-push IMG=registry.cn-hangzhou.aliyuncs.com/k8s-prow1/my-operator:v1.0.0
 ```
 
-将manager.yaml里的镜像名改为你打包后的镜像名
+将./config/manager/manager.yaml里的镜像名改为你打包后的镜像名
 
 ```yaml
 apiVersion: v1
@@ -492,9 +521,6 @@ spec:
 ```
 
 提前下载kube-rbac镜像，该镜像在境外。
-
-使用国内 kubesphere 公司提供的，然后下载就可以了。（这个可以到 docker-hub 中搜索，然后找出国内谁家有提供） 之前本来国内可以使用 gcr.azk8s.cn 来下载 gcr.io 的镜像，但现在禁止了，只有 aws 的 IP 才可以。
-
 ```shell
 $ docker pull kubesphere/kube-rbac-proxy:v0.5.0
 $ docker tag kubesphere/kube-rbac-proxy:v0.5.0 gcr.io/kubebuilder/kube-rbac-proxy:v0.5.0
