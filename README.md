@@ -366,7 +366,7 @@ appservices.app.example.com             2022-02-27T07:31:10Z
 $ make run ENABLE_WEBHOOKS=false
 ```
 
-上面的命令会在本地运行 Operator 应用，通过 ~/.kube/config 去关联集群信息，现在我们去添加一个 AppService 类型的资源然后观察本地 Operator 的变化情况，资源清单文件就是我们上面预定义的（config/samples/app_v1beta1_appservice.yaml）:
+上面的命令会在本地运行 Operator 应用，通过 ~/.kube/config 去关联集群信息，现在我们去添加一个 AppService 类型的资源然后观察本地 Operator 的变化情况，资源清单文件就是我们上面预定义的（config/samples/app_v1_appservice.yaml）:
 
 ```yaml
 apiVersion: app.ydzs.io/v1beta1
@@ -385,7 +385,7 @@ spec:
 直接创建这个资源对象：
 
 ```shell
-$ kubectl apply -f config/samples/app_v1beta1_appservice.yaml
+$ kubectl apply -f config/samples/app_v1_appservice.yaml
 ```
 
 我们可以看到我们的应用创建成功了，这个时候查看 Operator 的调试窗口会有如下的信息出现：
@@ -567,6 +567,9 @@ subjects:
 
 ```
 现在 Operator 的资源清单文件准备好了，然后就可以使用下面的命令来部署 CRD 资源对象了：
+```shell
+$ make deploy IMG=registry.cn-hangzhou.aliyuncs.com/test-operator/my-operator:v1.0.0
+```
 
 ```shell
 $ kubectl apply -f config/samples/app_v1_appservice.yaml
