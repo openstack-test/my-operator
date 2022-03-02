@@ -466,13 +466,13 @@ ENTRYPOINT ["/manager"]
 执行命令构建
 
 ```shell
-$ make docker-build IMG=registry.cn-hangzhou.aliyuncs.com/k8s-prow1/my-operator:v1.0.0
+$ make docker-build IMG=registry.cn-hangzhou.aliyuncs.com/test-operator/my-operator:v1.0.0
 ```
 
 镜像构建成功后，推送到自己的registry
 
 ```shell
-$ make docker-push IMG=registry.cn-hangzhou.aliyuncs.com/k8s-prow1/my-operator:v1.0.0
+$ make docker-push IMG=registry.cn-hangzhou.aliyuncs.com/test-operator/my-operator:v1.0.0
 ```
 
 将./config/manager/manager.yaml里的镜像名改为你打包后的镜像名
