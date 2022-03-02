@@ -345,7 +345,7 @@ NewService 对应的方法实现如下：
 
 ### 调试
 
-如果我们本地有一个可以访问的 Kubernetes 集群，我们也可以直接进行调试，在本地用户 ~/.kube/config 文件中配置集群访问信息，下面的信息表明可以访问 Kubernetes 集群：
+测试访问 Kubernetes 集群是否可以:
 
 ```shell
 $ kubectl cluster-info
@@ -419,7 +419,7 @@ nginx            NodePort       10.111.179.0     <none>                  80:3000
 清理：
 
 ```shell
-$ kubectl delete -f config/samples/app_v1beta1_appservice.yaml
+$ kubectl delete -f config/samples/app_v1_appservice.yaml
 $ make uninstall
 ```
 
@@ -499,42 +499,96 @@ spec:
   replicas: 1
   template:
     metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
       labels:
         control-plane: controller-manager
     spec:
+      securityContext:
+        runAsNonRoot: true
       containers:
-      - command:
-        - /manager
-        args:
-        - --enable-leader-election
-        image: sfeng/opdemo:v1.0.1  // 此处
-        name: manager
-        resources:
-          limits:
-            cpu: 100m
-            memory: 30Mi
-          requests:
-            cpu: 100m
-            memory: 20Mi
-        imagePullPolicy: IfNotPresent
+        - command:
+            - /manager
+          args:
+            - --leader-elect
+          image: registry.cn-hangzhou.aliyuncs.com/test-operator/my-operator:v1.0.0
+          name: manager
+          securityContext:
+            allowPrivilegeEscalation: false
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          # TODO(user): Configure the resources accordingly based on the project requirements.
+          # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+      serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
 ```
 
-提前下载kube-rbac镜像，该镜像在境外。
+提前下载kube-rbac镜像。
 ```shell
-$ docker pull kubesphere/kube-rbac-proxy:v0.5.0
-$ docker tag kubesphere/kube-rbac-proxy:v0.5.0 gcr.io/kubebuilder/kube-rbac-proxy:v0.5.0
-$ make deploy IMG=$USERNAME/opdemo:v1.0.0
+$ docker pull kubesphere/kube-rbac-proxy:v0.8.0
+$ docker tag kubesphere/kube-rbac-proxy:v0.8.0 gcr.io/kubebuilder/kube-rbac-proxy:v0.8.0
+$ make deploy IMG=registry.cn-hangzhou.aliyuncs.com/test-operator/my-operator:v1.0.0
 ```
 
+部署operator
+
+编辑config/rbac/role_binding.yaml文件，绑定controller 到 cluster-admin 集群管理员角色。
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  #name: manager-role
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: controller-manager
+    namespace: system
+
+```
 现在 Operator 的资源清单文件准备好了，然后就可以使用下面的命令来部署 CRD 资源对象了：
 
 ```shell
-$ kubectl apply -f config/samples/app_v1beta1_appservice.yaml
-$ kubectl get crd |grep myapp
-myapps.app.ydzs.io   2020-11-06T07:06:54Z
+$ kubectl apply -f config/samples/app_v1_appservice.yaml
+$ kubectl get crd |grep appservices
+appservices.app.example.com             2022-03-02T13:33:16Z
 ```
 
+**其他信息**
+
+删除 CRD 自定义资源
+```shell
+$ kubectl delete -f config/samples/app_v1_appservice.yaml
+app.app.example.com/app-sample deleted
+```
+删除 CRD 定义
+```shell
+$ make uninstall
+```
+删除 controller
+```shell
+$ make undeploy
+```
 到这里我们的 CRD 和 Operator 实现都已经安装成功了。
 
 **参考链接**
