@@ -547,7 +547,7 @@ $ docker tag kubesphere/kube-rbac-proxy:v0.8.0 gcr.io/kubebuilder/kube-rbac-prox
 $ make deploy IMG=registry.cn-hangzhou.aliyuncs.com/test-operator/my-operator:v1.0.0
 ```
 
-部署operator
+### 部署operator
 
 编辑config/rbac/role_binding.yaml文件，绑定controller 到 cluster-admin 集群管理员角色。
 ```yaml
