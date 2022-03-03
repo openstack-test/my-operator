@@ -25,7 +25,7 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// AppServiceSpec defines the desired state of AppService
+// AppServiceSpec定义了AppService的期望状态
 type AppServiceSpec struct {
 	Replicas  *int32                      `json:"replicas"`            // 副本数
 	Image     string                      `json:"image"`               // 镜像
@@ -34,7 +34,7 @@ type AppServiceSpec struct {
 	Ports     []corev1.ServicePort        `json:"ports,omitempty"`     // 服务端口
 }
 
-// AppServiceStatus defines the observed state of AppService
+// AppServiceStatus定义了AppService的观察状态
 type AppServiceStatus struct {
 	appsv1.DeploymentStatus `json:",inline"` // 直接引用DeploymentStatus
 }
@@ -42,7 +42,7 @@ type AppServiceStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// AppService is the Schema for the appservices API
+// AppService是appservices API的Schema
 type AppService struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -53,7 +53,7 @@ type AppService struct {
 
 //+kubebuilder:object:root=true
 
-// AppServiceList contains a list of AppService
+// AppServiceList包含一个AppService列表
 type AppServiceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
