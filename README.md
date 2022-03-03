@@ -2,9 +2,9 @@
 
 ## Operator 介绍
 
-Operator 可以看成是 CRD + Controller 的一种组合资源，Operator 是一种思想，它结合了特定领域知识并通过 CRD 机制扩展了 Kubernetes API 资源，使用户管理 Kubernetes 的内置资源（Pod、Deployment等）一样创建、配置和管理应用程序，Operator 是一个特定的应用程序的控制器，通过扩展 Kubernetes API 资源以代表 Kubernetes 用户创建、配置和管理复杂应用程序的实例，通常包含资源模型定义和控制器，通过 Operator 通常是为了实现某种特定软件（通常是有状态服务）的自动化运维。
+Operator 可以看成是 CRD + Controller 的一种组合资源。Kubernetes 中的基础资源类型有 Pod、Service、Job、Deployment 等表达能力有限，CRD 则提供了创建新的资源类型方式；Controller 监听 CRD 对象实例的增、删、改事件，然后执行相应的业务逻辑。
 
-我们完全可以通过上面的方式编写一个 CRD 对象，然后去手动实现一个对应的 Controller 就可以实现一个 Operator，但是我们也发现从头开始去构建一个 CRD 控制器并不容易，需要对 Kubernetes 的 API 有深入了解，并且 RBAC 集成、镜像构建、持续集成和部署等都需要很大工作量。为了解决这个问题，社区就推出了对应的简单易用的 Operator 框架，比较主流的是 kubebuilder 和 Operator Framework，这两个框架的使用基本上差别不大，我们可以根据自己习惯选择一个即可，我们这里先使用 Operator Framework 来给大家简要说明下 Operator 的开发。
+为解决开发难得问题，社区推出了简单易用的 Operator 框架，比较主流的是 kubebuilder 和 Operator Framework，这两个框架的使用基本上差别不大，我们可以根据自己习惯选择一个即可，我们这里先使用 Operator Framework 来给大家简要说明下 Operator 的开发。
 
 ## Operator Framework
 Operator Framework 是 CoreOS 开源的一个用于快速开发 Operator 的工具包，该框架包含两个主要的部分：
