@@ -568,7 +568,7 @@ subjects:
     namespace: system
 
 ```
-现在，部署 Operator:
+现在，部署 Operator，本质上用的是kustomize工具构建:
 ```shell
 $ touch config/rbac/role.yaml   # 创建一个空文件，否则部署会报错
 
@@ -593,19 +593,27 @@ deployment.apps/my-operator-controller-manager created
 
 查看operator部署是否成功:
 ```shell
-# kubectl get po -A | grep controller
-my-operator-system   my-operator-controller-manager-b5f8bcb58-7nqkv         0/2     ImagePullBackOff   0          11h
+# kubectl get po -A | grep my-operator
+my-operator-system   my-operator-controller-manager-b5f8bcb58-7nqkv         2/2     Running   0          11h
 
-# kubectl get svc -A | grep controller
+# kubectl get svc -A | grep my-operator
 my-operator-system   my-operator-controller-manager-metrics-service   ClusterIP      172.21.2.239    <none>            8443/TCP                                                                  11h
 
 ```
 
-部署 crd资源测试:
+部署 crd资源测试。可以看到我们自定义的deployment、service资源已经按照需求创建成功了:
 ```shell
 $ kubectl apply -f config/samples/app_v1_appservice.yaml
-$ kubectl get crd |grep appservices
-appservices.app.example.com             2022-03-02T13:33:16Z
+
+$ kubectl get deploy |grep nginx
+nginx            2/2     2            2           46s
+
+$ kubectl get pod |grep nginx
+nginx-5bf87f5f59-knbdw                           1/1     Running   0          51s
+nginx-5bf87f5f59-lblx6                           1/1     Running   0          51s
+
+$ kubectl get svc |grep nginx
+nginx        NodePort    172.21.0.149   <none>        80:30002/TCP   57s
 ```
 
 **其他信息**
@@ -624,7 +632,3 @@ $ make uninstall
 $ make undeploy
 ```
 到这里我们的 CRD 和 Operator 实现都已经安装成功了。
-
-**参考链接**
-- https://www.sfernetes.com/2021/11/22/operator-framework/#%E9%A1%B9%E7%9B%AE%E7%BB%93%E6%9E%84
-- https://www.cnblogs.com/leffss/p/14732645.html
