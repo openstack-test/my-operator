@@ -621,7 +621,6 @@ nginx        NodePort    172.21.0.149   <none>        80:30002/TCP   57s
 删除 CRD 自定义资源
 ```shell
 $ kubectl delete -f config/samples/app_v1_appservice.yaml
-app.app.example.com/app-sample deleted
 ```
 删除 CRD 定义
 ```shell
