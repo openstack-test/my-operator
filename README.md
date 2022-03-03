@@ -51,7 +51,7 @@ spec:
 
 
 
-通过这里的自定义的 AppService 资源对象去创建副本数为2的 Pod，然后通过` nodePort=30002 `的端口去暴露服务，接下来我们就来一步一步的实现我们这里的这个简单的 Operator 应用。
+通过这里自定义的 AppService 资源对象去创建副本数为2的 Pod，然后通过` nodePort=30002 `的端口去暴露服务，接下来我们就来实现这个简单的 Operator 应用。
 
 ## 开发环境
 依赖服务版本：
@@ -403,9 +403,11 @@ $ kubectl apply -f config/samples/app_v1_appservice.yaml
 $ kubectl get AppService
 NAME        AGE
 nginx       2m8s
+
 $ kubectl get deploy
 NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
 nginx   p                2/2     2            2           2m20s
+
 $ kubectl get svc   
 NAME             TYPE           CLUSTER-IP       EXTERNAL-IP             PORT(S)          AGE
 nginx            NodePort       10.111.179.0     <none>                  80:30002/TCP     2m23s
@@ -475,7 +477,7 @@ $ make docker-build IMG=registry.cn-hangzhou.aliyuncs.com/test-operator/my-opera
 $ make docker-push IMG=registry.cn-hangzhou.aliyuncs.com/test-operator/my-operator:v1.0.0
 ```
 
-将./config/manager/manager.yaml里的镜像名改为你打包后的镜像名
+将`config/manager/manager.yaml`里的镜像名改为你打包后的镜像名
 
 ```yaml
 apiVersion: v1
@@ -540,16 +542,16 @@ spec:
       terminationGracePeriodSeconds: 10
 ```
 
-提前下载kube-rbac镜像。
-```shell
-$ docker pull kubesphere/kube-rbac-proxy:v0.8.0
-$ docker tag kubesphere/kube-rbac-proxy:v0.8.0 gcr.io/kubebuilder/kube-rbac-proxy:v0.8.0
-$ make deploy IMG=registry.cn-hangzhou.aliyuncs.com/test-operator/my-operator:v1.0.0
+修改`config/default/manager_auth_proxy_patch.yaml`文件，将kube-rbac镜像地址改成国内的。
+```yaml
+containers:
+- name: kube-rbac-proxy
+  image: kubesphere/kube-rbac-proxy:v0.8.0
 ```
 
 ### 部署operator
 
-编辑config/rbac/role_binding.yaml文件，绑定controller 到 cluster-admin 集群管理员角色。
+编辑`config/rbac/role_binding.yaml`文件，绑定controller 到 `cluster-admin` 集群管理员角色。
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -566,11 +568,40 @@ subjects:
     namespace: system
 
 ```
-现在 Operator 的资源清单文件准备好了，然后就可以使用下面的命令来部署 CRD 资源对象了：
+现在，部署 Operator:
 ```shell
+$ touch config/rbac/role.yaml   # 创建一个空文件，否则部署会报错
+
 $ make deploy IMG=registry.cn-hangzhou.aliyuncs.com/test-operator/my-operator:v1.0.0
+/root/my-operator/bin/controller-gen rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+cd config/manager && /root/my-operator/bin/kustomize edit set image controller=registry.cn-hangzhou.aliyuncs.com/test-operator/my-operator:v1.0.0
+/root/my-operator/bin/kustomize build config/default | kubectl apply -f -
+namespace/my-operator-system created
+customresourcedefinition.apiextensions.k8s.io/appservices.app.example.com created
+serviceaccount/my-operator-controller-manager created
+role.rbac.authorization.k8s.io/my-operator-leader-election-role created
+clusterrole.rbac.authorization.k8s.io/my-operator-metrics-reader created
+clusterrole.rbac.authorization.k8s.io/my-operator-proxy-role created
+rolebinding.rbac.authorization.k8s.io/my-operator-leader-election-rolebinding created
+clusterrolebinding.rbac.authorization.k8s.io/my-operator-manager-rolebinding created
+clusterrolebinding.rbac.authorization.k8s.io/my-operator-proxy-rolebinding created
+configmap/my-operator-manager-config created
+service/my-operator-controller-manager-metrics-service created
+deployment.apps/my-operator-controller-manager created
+
 ```
 
+查看operator部署是否成功:
+```shell
+# kubectl get po -A | grep controller
+my-operator-system   my-operator-controller-manager-b5f8bcb58-7nqkv         0/2     ImagePullBackOff   0          11h
+
+# kubectl get svc -A | grep controller
+my-operator-system   my-operator-controller-manager-metrics-service   ClusterIP      172.21.2.239    <none>            8443/TCP                                                                  11h
+
+```
+
+部署 crd资源测试:
 ```shell
 $ kubectl apply -f config/samples/app_v1_appservice.yaml
 $ kubectl get crd |grep appservices
